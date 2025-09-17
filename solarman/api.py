@@ -49,7 +49,7 @@ class SolarmanApi:
                 {"appSecret": secret, "email": username, "password": passhash}
             )
             headers = {"Content-Type": "application/json"}
-            url = f"//account/v1.0/token?appId={appid}&language=en"
+            url = f"/account/v1.0/token?appId={appid}&language=en"
             conn.request("POST", url, payload, headers)
             res = conn.getresponse()
             data = json.loads(res.read())
@@ -70,7 +70,7 @@ class SolarmanApi:
             "Content-Type": "application/json",
             "Authorization": "bearer " + self.token,
         }
-        conn.request("POST", "//station/v1.0/realTime?language=en", payload, headers)
+        conn.request("POST", "/station/v1.0/realTime?language=en", payload, headers)
         res = conn.getresponse()
         data = json.loads(res.read())
         return data
@@ -86,7 +86,7 @@ class SolarmanApi:
             "Content-Type": "application/json",
             "Authorization": "bearer " + self.token,
         }
-        conn.request("POST", "//device/v1.0/currentData?language=en", payload, headers)
+        conn.request("POST", "/device/v1.0/currentData?language=en", payload, headers)
         res = conn.getresponse()
         data = json.loads(res.read())
         return data
