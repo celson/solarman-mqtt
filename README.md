@@ -292,6 +292,8 @@ solarman_station_history,station=1234567,period=month generation_kwh=303.0,full_
 solarman_station_history,station=1234567,period=year generation_kwh=4715.9,full_power_hours=857.43 1767236400
 ```
 
+The export ends with a `solarman_station_info` point at the current time, holding `installed_capacity_kw` and `electricity_price`, e.g. to compute savings next to the history.
+
 Points are idempotent, so the export can be repeated (e.g. daily from a timer) to keep the current day, month and year up to date. To write it to InfluxDB v1:
 
 ```bash

@@ -6,7 +6,7 @@ import datetime
 import unittest
 from zoneinfo import ZoneInfo
 
-from solarman.history import day_ranges, month_ranges, to_lines
+from solarman.history import day_ranges, info_line, month_ranges, to_lines
 
 TZ = ZoneInfo("America/Sao_Paulo")
 
@@ -49,6 +49,20 @@ class TestLines(unittest.TestCase):
 
     def test_empty_item(self):
         self.assertEqual(to_lines([{"year": 2026, "generationValue": None}], "year", 1, TZ), [])
+
+
+class TestInfoLine(unittest.TestCase):
+    """Station base information becomes a single point"""
+
+    def test_info(self):
+        base = {"installedCapacity": 5.5, "mergeElectricPrice": 1.13, "ownerName": "x"}
+        self.assertEqual(
+            info_line(base, 123, 1792378800.5),
+            "solarman_station_info,station=123 installed_capacity_kw=5.5,electricity_price=1.13 1792378800",
+        )
+
+    def test_info_empty(self):
+        self.assertIsNone(info_line({}, 123, 0))
 
 
 if __name__ == "__main__":

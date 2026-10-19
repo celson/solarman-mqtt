@@ -3,9 +3,11 @@ History - Export station production history as InfluxDB line protocol
 """
 
 import datetime
+import time
 from zoneinfo import ZoneInfo
 
 MEASUREMENT = "solarman_station_history"
+INFO_MEASUREMENT = "solarman_station_info"
 
 # API limits per request: 31 days or 12 months; years are not limited.
 _MAX_DAYS = 31
@@ -14,6 +16,11 @@ _MAX_MONTHS = 12
 _FIELDS = {
     "generationValue": "generation_kwh",
     "fullPowerHours": "full_power_hours",
+}
+
+_INFO_FIELDS = {
+    "installedCapacity": "installed_capacity_kw",
+    "mergeElectricPrice": "electricity_price",
 }
 
 
@@ -75,6 +82,21 @@ def to_lines(items, period, station_id, timezone):
     return lines
 
 
+def info_line(base, station_id, timestamp):
+    """
+    Convert station base information to a line protocol point
+    :return: line, or None without known fields
+    """
+    fields = ",".join(
+        f"{name}={float(base[key])}"
+        for key, name in _INFO_FIELDS.items()
+        if base.get(key) is not None
+    )
+    if not fields:
+        return None
+    return f"{INFO_MEASUREMENT},station={station_id} {fields} {int(timestamp)}"
+
+
 class StationHistory:  # pylint: disable=too-few-public-methods
     """
     Collect the daily, monthly and yearly history of a station
@@ -83,6 +105,7 @@ class StationHistory:  # pylint: disable=too-few-public-methods
     def __init__(self, api):
         self.api = api
         base = api.get_station_base()
+        self.base = base
         self.timezone = ZoneInfo(
             (base.get("region") or {}).get("timezone") or "UTC"
         )
@@ -108,6 +131,10 @@ class StationHistory:  # pylint: disable=too-few-public-methods
         for first, last in month_ranges(start, end):
             lines += self._fetch(3, first, last, "month")
         lines += self._fetch(4, str(start.year), str(end.year), "year")
+
+        info = info_line(self.base, self.api.station_id, time.time())
+        if info:
+            lines.append(info)
         return lines
 
     def _fetch(self, time_type, start, end, period):
