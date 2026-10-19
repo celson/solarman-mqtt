@@ -32,6 +32,12 @@ def main():
         help="config file (default ./config.json)",
     )
     parser.add_argument(
+        "--history",
+        metavar="DAYS",
+        help="print the station production history of the last DAYS days "
+        "(or 'all') as InfluxDB line protocol and exit",
+    )
+    parser.add_argument(
         "--validate", action="store_true", help="validate config file and exit"
     )
     parser.add_argument(
@@ -46,6 +52,8 @@ def main():
         solarman.single_run_loop(args.file)
     elif args.daemon:
         solarman.daemon(args.file, args.interval)
+    elif args.history:
+        solarman.history(args.file, args.history)
     elif args.validate:
         solarman.validate_config(args.file)
     elif args.create_passhash:

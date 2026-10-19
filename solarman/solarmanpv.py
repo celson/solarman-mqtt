@@ -9,9 +9,25 @@ import time
 
 from .api import SolarmanApi, ConstructData
 from .helpers import ConfigCheck, HashPassword
+from .history import StationHistory
 from .mqtt import Mqtt
 
 logging.basicConfig(level=logging.INFO)
+
+# Station base fields published to MQTT; owner, contact and location are left out
+STATION_INFO_KEYS = [
+    "currency",
+    "gridInterconnectionType",
+    "installedCapacity",
+    "mergeElectricPrice",
+    "operating",
+    "startOperatingTime",
+    "totalRunningDayCount",
+    "type",
+]
+
+# Alerts raised within this window are published
+ALERT_WINDOW = 24 * 3600
 
 
 class SolarmanPV:
@@ -100,6 +116,12 @@ class SolarmanPV:
 
         mqtt_connection = Mqtt(config["mqtt"])
 
+        if config.get("stationInfo", True):
+            self.publish_station_info(pvdata, mqtt_connection, topic)
+
+        if config.get("alerts", True):
+            self.publish_alerts(pvdata, mqtt_connection, topic)
+
         if meter_data and meter_state == 1:
             logging.info(
                 "%s - Meter DeviceState: %s -> Publishing to MQTT ...", _t, meter_state
@@ -159,6 +181,64 @@ class SolarmanPV:
                 _t,
                 inverter_device_state,
             )
+
+    @staticmethod
+    def publish_station_info(pvdata, mqtt_connection, topic):
+        """
+        Publish station base information (capacity, start date, price, ...)
+        """
+        try:
+            base = pvdata.get_station_base()
+        except Exception as error:  # pylint: disable=broad-except
+            logging.error("Unable to fetch station info: %s", str(error))
+            return
+
+        info = {i: base[i] for i in STATION_INFO_KEYS if base.get(i) is not None}
+        for i in info:
+            mqtt_connection.message(topic + "/station/info/" + i, info[i])
+        mqtt_connection.message(topic + "/station/info/attributes", json.dumps(info))
+
+    @staticmethod
+    def publish_alerts(pvdata, mqtt_connection, topic):
+        """
+        Publish the number and list of inverter alerts of the last 24 hours
+        """
+        now = int(time.time())
+        try:
+            data = pvdata.get_device_alerts(
+                pvdata.config["inverterId"], now - ALERT_WINDOW, now
+            )
+        except Exception as error:  # pylint: disable=broad-except
+            logging.error("Unable to fetch alerts: %s", str(error))
+            return
+
+        if not data.get("success", True):
+            logging.error("Unable to fetch alerts: %s", data.get("msg"))
+            return
+
+        alerts = data.get("alertList") or []
+        mqtt_connection.message(topic + "/inverter/alerts", len(alerts))
+        mqtt_connection.message(
+            topic + "/inverter/alerts/attributes", json.dumps({"alerts": alerts})
+        )
+
+    def history(self, file, days):
+        """
+        Print the production history of every station in the config file
+        as InfluxDB line protocol (timestamps in seconds)
+        :param file: Config file
+        :param days: number of days back, or "all" since the station started
+        :return:
+        """
+        days = None if days == "all" else int(days)
+        seen = set()
+        for conf in self.load_config(file):
+            if conf["stationId"] in seen:
+                continue
+            seen.add(conf["stationId"])
+            api = SolarmanApi(conf, realtime=False)
+            for line in StationHistory(api).lines(days):
+                print(line)
 
     def single_run_loop(self, file):
         """
