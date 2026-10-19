@@ -13,7 +13,7 @@ class SolarmanApi:
     Connect to the Solarman API and return PV data
     """
 
-    def __init__(self, config):
+    def __init__(self, config, realtime=True):
         self.config = config
         self.station_id = config["stationId"]
         self.url = config["url"]
@@ -23,6 +23,9 @@ class SolarmanApi:
             self.config["username"],
             self.config["passhash"],
         )
+        if not realtime:
+            return
+
         self.station_realtime = self.get_station_realtime()
         self.device_current_data_inverter = self.get_device_current_data(
             self.config["inverterId"]
@@ -59,37 +62,82 @@ class SolarmanApi:
             logging.error("Unable to fetch token: %s", str(error))
             sys.exit(1)
 
+    def post(self, path, body):
+        """
+        POST a JSON body to an authenticated API endpoint
+        :return: decoded JSON response
+        """
+        conn = http.client.HTTPSConnection(self.url, timeout=60)
+        payload = json.dumps(body)
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": "bearer " + self.token,
+        }
+        conn.request("POST", path, payload, headers)
+        res = conn.getresponse()
+        data = json.loads(res.read())
+        return data
+
     def get_station_realtime(self):
         """
         Return station realtime data
         :return: realtime data
         """
-        conn = http.client.HTTPSConnection(self.url, timeout=60)
-        payload = json.dumps({"stationId": self.station_id})
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": "bearer " + self.token,
-        }
-        conn.request("POST", "/station/v1.0/realTime?language=en", payload, headers)
-        res = conn.getresponse()
-        data = json.loads(res.read())
-        return data
+        return self.post(
+            "/station/v1.0/realTime?language=en", {"stationId": self.station_id}
+        )
+
+    def get_station_base(self):
+        """
+        Return station base information (capacity, start date, price, ...)
+        :return: base data
+        """
+        return self.post(
+            "/station/v1.0/base?language=en", {"stationId": self.station_id}
+        )
+
+    def get_station_history(self, time_type, start_time, end_time):
+        """
+        Return station history data
+        :param time_type: 2 = day (max. 31 days), 3 = month (max. 12 months), 4 = year
+        :param start_time: start, as YYYY-MM-DD, YYYY-MM or YYYY
+        :param end_time: end, in the same format as start_time
+        :return: history data
+        """
+        return self.post(
+            "/station/v1.0/history?language=en",
+            {
+                "stationId": self.station_id,
+                "timeType": time_type,
+                "startTime": start_time,
+                "endTime": end_time,
+            },
+        )
 
     def get_device_current_data(self, device_sn):
         """
         Return device current data
         :return: current data
         """
-        conn = http.client.HTTPSConnection(self.url, timeout=60)
-        payload = json.dumps({"deviceSn": device_sn})
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": "bearer " + self.token,
-        }
-        conn.request("POST", "/device/v1.0/currentData?language=en", payload, headers)
-        res = conn.getresponse()
-        data = json.loads(res.read())
-        return data
+        return self.post(
+            "/device/v1.0/currentData?language=en", {"deviceSn": device_sn}
+        )
+
+    def get_device_alerts(self, device_sn, start_timestamp, end_timestamp):
+        """
+        Return device alerts raised between two unix timestamps
+        :return: alert data
+        """
+        return self.post(
+            "/device/v1.0/alertList?language=en",
+            {
+                "deviceSn": device_sn,
+                "startTimestamp": start_timestamp,
+                "endTimestamp": end_timestamp,
+                "page": 1,
+                "size": 100,
+            },
+        )
 
 
 class ConstructData:  # pylint: disable=too-few-public-methods

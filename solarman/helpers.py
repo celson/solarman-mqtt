@@ -37,6 +37,8 @@ _SCHEMA = {
         "loggerId": {"type": "string", "minLength": 10, "maxLength": 10},
         "meterId": {"type": "string", "minLength": 10},
         "debug": {"type": "boolean", "optional": True},
+        "stationInfo": {"type": "boolean"},
+        "alerts": {"type": "boolean"},
         "mqtt": {
             "type": "object",
             "properties": {

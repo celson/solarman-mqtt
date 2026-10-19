@@ -6,7 +6,7 @@
 Script to retrieve current Solar PV data from the Solarman API, and send Power (W) and Energy (kWh) metrics to a MQTT broker, for further use in home automation. Several PV vendors use the Solarman Smart platform for statistics. One example is the Trannergy PV converter.
 
 ```bash
-usage: run.py [-h] [-d] [-s] [-i INTERVAL] [-f FILE] [--validate] [--create-passhash CREATE_PASSHASH] [-v]
+usage: run.py [-h] [-d] [-s] [-i INTERVAL] [-f FILE] [--history DAYS] [--validate] [--create-passhash CREATE_PASSHASH] [-v]
 
 Collect data from Trannergy / Solarman API
 
@@ -17,6 +17,8 @@ optional arguments:
   -i INTERVAL, --interval INTERVAL
                         run interval in seconds (default 300 sec.)
   -f FILE, --file FILE  config file (default ./config.json)
+  --history DAYS        print the station production history of the last DAYS days
+                        (or 'all') as InfluxDB line protocol and exit
   --validate            validate config file and exit
   --create-passhash CREATE_PASSHASH
                         create passhash from provided passwordand exit
@@ -150,6 +152,22 @@ solarmanpv/station/usePower
 solarmanpv/station/wirePower
 ```
 
+### Station info
+
+Base information about the plant, published on every run unless `"stationInfo": false` is set in the config. Owner, contact and location fields are not published.
+
+```text
+solarmanpv/station/info/currency
+solarmanpv/station/info/gridInterconnectionType
+solarmanpv/station/info/installedCapacity
+solarmanpv/station/info/mergeElectricPrice
+solarmanpv/station/info/operating
+solarmanpv/station/info/startOperatingTime
+solarmanpv/station/info/totalRunningDayCount
+solarmanpv/station/info/type
+solarmanpv/station/info/attributes
+```
+
 ### Inverter
 
 Inverter information.
@@ -224,6 +242,15 @@ Grid Frequency_Lower_Limit: 47.50
 Start-up Self-checking Time: 60
 ```
 
+### Inverter alerts
+
+Alerts raised by the inverter in the last 24 hours, published on every run unless `"alerts": false` is set in the config. `alerts` holds the number of alerts and `alerts/attributes` the list as returned by the API (`{"alerts": [...]}`).
+
+```text
+solarmanpv/inverter/alerts
+solarmanpv/inverter/alerts/attributes
+```
+
 ### Logger (Collector)
 
 ```text
@@ -253,6 +280,26 @@ Batch_Command_Supported: 1
 Support_Reporting_Upgrading_Progress: 0
 AT+UPGRADE_Command_Supported: 255
 Method_Of_Protocol_Upgrade: 255
+```
+
+## Production history
+
+`--history DAYS` prints the daily, monthly and yearly production of every station in the config file as [InfluxDB line protocol](https://docs.influxdata.com/influxdb/v1/write_protocols/line_protocol_tutorial/), with timestamps in seconds at the start of each period in the station timezone. Use `--history all` to export everything since the station started operating.
+
+```text
+solarman_station_history,station=1234567,period=day generation_kwh=22.6,full_power_hours=4.11 1792378800
+solarman_station_history,station=1234567,period=month generation_kwh=303.0,full_power_hours=55.09 1790823600
+solarman_station_history,station=1234567,period=year generation_kwh=4715.9,full_power_hours=857.43 1767236400
+```
+
+The export ends with a `solarman_station_info` point at the current time, holding `installed_capacity_kw` and `electricity_price`, e.g. to compute savings next to the history.
+
+Points are idempotent, so the export can be repeated (e.g. daily from a timer) to keep the current day, month and year up to date. To write it to InfluxDB v1:
+
+```bash
+python run.py -f config.json --history 3 |
+  curl -sS --fail -u "$INFLUX_USER:$INFLUX_PASSWORD" --data-binary @- \
+    "http://influxdb:8086/write?db=homeassistant&precision=s"
 ```
 
 ## Running multiple inverter stations
